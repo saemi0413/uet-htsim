@@ -53,6 +53,18 @@
 
 ---
 
+## 3-1) NACK `raw_rtt` 반영 정책 초안
+
+- NACK `raw_rtt`는 normal ACK RTT sample과 섞지 않는다.
+- NACK는 RTT 값보다 bad feedback event로 우선 처리한다.
+- NACK `raw_rtt`는 필요 시 다음 중 하나로 제한적으로 사용한다.
+  - `bad feedback elapsed sample` 전용 상태에 별도 저장
+  - ACK RTT 계열보다 낮은 가중치로만 참고
+- 1차 `RTT-Bitmap` 구현 기본값:
+  - NACK `raw_rtt`를 `srtt` 업데이트에 사용하지 않는다.
+
+---
+
 ## 4) `RTT-Bitmap` 설계 초안
 
 핵심 아이디어:
@@ -78,6 +90,10 @@
   - inflation이 임계값보다 높으면 penalty 증가
   - 정상 ACK가 지속되면 penalty 점진 감소
   - NACK/TIMEOUT은 inflation과 무관하게 강한 penalty 증가 가능
+- invalid RTT sample 처리 규칙:
+  - `raw_rtt == 0`이면 invalid/no RTT sample로 취급
+  - invalid RTT sample은 `min_rtt/srtt/base_rtt` 업데이트에 사용하지 않음
+  - TIMEOUT에서 전달되는 `timeInf == 0`은 low RTT signal이 아니며, 낮은 RTT로 해석 금지
 
 ### `UecMpBitmap`과의 관계
 
@@ -120,6 +136,9 @@
 2. 단, reuse budget 초과 시 다른 후보 탐색
 3. 일정 확률(예: 5~15%)로 exploration 수행
 4. RTT sample freshness 만료 시 해당 path score를 중립 방향으로 완화
+5. `raw_rtt == 0`이면 whitelist/good path 판정에 사용하지 않음
+6. invalid RTT sample은 good path pool에 넣지 않음
+7. TIMEOUT sentinel(`timeInf == 0`)은 low RTT signal이 아님
 
 ### `UecMpMixed`와의 관계
 
@@ -134,7 +153,9 @@
 1. `RTT-Bitmap` class 추가
    - 기존 class와 분리된 신규 class로 도입
 2. command-line option 추가
-   - 예: `-load_balancing_algo rtt_bitmap` (이름은 구현 시점 확정)
+   - 후보: `-load_balancing_algo rtt_bitmap`
+   - 후보: `-load_balancing_algo rtt_mixed`
+   - 기존 `bitmap`/`mixed`와 비교하기 쉽게 naming 유지
 3. `one.cm` smoke test
    - 동작/회귀 기본 확인
 4. `perm_16n_16c_2MB.cm` baseline 비교
@@ -151,6 +172,10 @@
 - `Rtx`
 - `NACKs`
 - `ACKs`
+- `flow finished count`
+- `total packets`
+- 최종 요약:
+  - `New / Rtx / RTS / Bounced / ACKs / NACKs / Pulls`
 - `tail gap`
   - 예: 알고리즘별 `latest finish` 차이
 - 알고리즘별 stability
@@ -159,4 +184,3 @@
 권장 비교 표:
 - baseline(`bitmap`, `mixed`, `oblivious`) 대비
 - RTT-aware(`rtt_bitmap`, 이후 `rtt_mixed`) 상대 개선/악화
-
