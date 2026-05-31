@@ -119,3 +119,53 @@ cmake --build build --target htsim_uec --parallel
 5. 같은 workload 세트로 before/after 비교표 작성.
 6. tail/재전송 중심으로 최종 알고리즘 선택 및 회귀 검증.
 
+---
+
+## 9) `processEv` overload 정리 이력 및 회귀 검증
+
+### 9-1. interface 변경 이력
+
+- 초기 변경 중 `processEv(path_id, feedback, raw_rtt)` 단일 3-arg pure virtual 구조로 바뀐 상태가 있었음.
+- 이를 다음 구조로 정리함(behavior-preserving 목적):
+  - `processEv(uint16_t path_id, PathFeedback feedback)`는 기존대로 2-arg pure virtual 유지
+  - `processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt)`는 base overload로 추가
+  - base 3-arg overload는 `raw_rtt`를 무시하고 2-arg `processEv(path_id, feedback)`로 forward
+- 결과적으로 기존 `UecMpBitmap / UecMpReps / UecMpRepsLegacy / UecMpOblivious / UecMpMixed` 내부 동작은 유지됨.
+
+### 9-2. feedback path별 `raw_rtt` 전달 의미
+
+| path | 전달 값 | RTT-aware 해석 가이드 |
+|---|---|---|
+| ACK path | 실제 `raw_rtt` sample | normal RTT sample로 사용 가능 |
+| NACK path | 해당 NACK context의 elapsed `raw_rtt` 전달 | normal RTT sample이 아니라 bad feedback elapsed sample로 해석해야 함 |
+| TIMEOUT path | `timeInf` sentinel 전달 | normal RTT sample로 사용하면 안 됨(결측/invalid 의미) |
+
+### 9-3. build 결과
+
+| 항목 | 결과 |
+|---|---|
+| build command | `cmake --build build --target htsim_uec --parallel` |
+| 결과 | 성공 |
+| warnings/errors | 치명 오류 없음, binary 생성 확인 |
+
+### 9-4. `one.cm` 회귀 결과
+
+| 항목 | 결과 |
+|---|---|
+| 성공 여부 | 성공 |
+| exit code | 0 |
+| summary | New=490, Rtx=0, RTS=0, Bounced=0, ACKs=124, NACKs=0, Pulls=0 |
+| 결론 | 기존 baseline과 동일 |
+
+### 9-5. `perm_16n_16c_2MB.cm` 회귀 결과 (`bitmap/mixed/oblivious`)
+
+| algorithm | 성공 | exit code | earliest finish | latest finish | total packets | New/Rtx/RTS/Bounced/ACKs/NACKs/Pulls | baseline 대비 |
+|---|---|---:|---:|---:|---:|---|---|
+| bitmap | 성공 | 0 | 187.015 | 198.55 | 7840 | 7840/0/0/0/2775/0/0 | 동일 |
+| mixed | 성공 | 0 | 187.944 | 198.726 | 7840 | 7840/0/0/0/2661/0/0 | 동일 |
+| oblivious | 성공 | 0 | 189.607 | 210.643 | 7840 | 7840/3/0/0/3311/3/0 | 동일 |
+
+### 9-6. 결론
+
+- `processEv` overload 정리(2-arg pure virtual 유지 + 3-arg base overload 추가) 이후에도 baseline 지표 변화가 관찰되지 않았음.
+- 즉, 이번 patch는 RTT plumbing을 위한 interface 정리이며 기존 알고리즘 behavior 변화는 없음.
