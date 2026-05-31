@@ -67,6 +67,31 @@ private:
     uint8_t _max_penalty;             // max value we allow in _path_penalties (typically 1 or 2).
 };
 
+class UecMpRttBitmap : public UecMultipath {
+public:
+    UecMpRttBitmap(uint16_t no_of_paths, bool debug);
+    void processEv(uint16_t path_id, PathFeedback feedback) override;
+    void processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt) override;
+    uint16_t nextEntropy(uint64_t seq_sent, uint64_t cur_cwnd_in_pkts) override;
+private:
+    uint16_t _no_of_paths;       // must be a power of 2
+    uint16_t _path_random;       // random upper bits of EV, set at startup and never changed
+    uint16_t _path_xor;          // random value set each time we wrap the entropy values - XOR with
+                                 // _current_ev_index
+    uint16_t _current_ev_index;  // count through _no_of_paths and then wrap. XOR with _path_xor
+    vector<uint8_t> _ev_skip_bitmap;  // path penalties for load balancing
+
+    uint16_t _ev_skip_count;
+    uint8_t _max_penalty;
+
+    // RTT state per path; updated only from PATH_GOOD with valid raw_rtt.
+    vector<simtime_picosec> _min_rtt;
+    vector<simtime_picosec> _srtt;
+    vector<simtime_picosec> _last_valid_rtt;
+    vector<uint16_t> _invalid_sample_count;
+    vector<uint8_t> _has_valid_rtt;
+};
+
 class UecMpRepsLegacy : public UecMultipath {
 public:
     UecMpRepsLegacy(uint16_t no_of_paths, bool debug);

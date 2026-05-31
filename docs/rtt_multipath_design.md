@@ -184,3 +184,94 @@
 권장 비교 표:
 - baseline(`bitmap`, `mixed`, `oblivious`) 대비
 - RTT-aware(`rtt_bitmap`, 이후 `rtt_mixed`) 상대 개선/악화
+
+---
+
+## 8) `UecMpRttBitmap` v0.1 구현 반영
+
+### 8-1. 구현 범위 요약
+
+- `UecMpRttBitmap`은 `UecMpBitmap`과 별도 class로 구현
+- `UecMultipath`를 직접 상속
+- command-line option: `-load_balancing_algo rtt_bitmap`
+- 기존 알고리즘(`bitmap`, `mixed`, `reps`, `reps_legacy`, `oblivious`) 코드는 수정하지 않음
+
+### 8-2. v0.1 실제 정책
+
+- `PATH_GOOD`
+  - `raw_rtt > 0`(valid sample)일 때 `min_rtt/srtt/last_valid_rtt`만 업데이트
+  - penalty는 항상 `0` (RTT extra penalty 없음)
+- `PATH_ECN`
+  - base penalty `+1` (기존 Bitmap과 동일)
+  - valid RTT + 기존 `srtt`가 있을 때만 extra penalty 최대 `+1`
+- `PATH_NACK`
+  - base penalty `+4` (기존 Bitmap과 동일)
+  - `raw_rtt`는 `srtt` 업데이트에 사용하지 않음
+- `PATH_TIMEOUT`
+  - base penalty `+_max_penalty` (기존 Bitmap과 동일)
+  - `raw_rtt/timeInf`는 RTT sample로 사용하지 않음
+- `raw_rtt == 0`
+  - invalid/no sample로 처리
+  - RTT 상태 업데이트에 사용하지 않음
+
+### 8-3. overflow-safe 비교식
+
+- 기존 위험 비교식 `raw_rtt * 4 > srtt * 5`는 사용하지 않음
+- 의미적으로 `raw_rtt > prev_srtt + prev_srtt / 4` 조건을 안전하게 구현
+- 현재 구현식:
+  - `(raw_rtt > prev_srtt) && ((raw_rtt - prev_srtt) > prev_srtt / 4)`
+
+### 8-4. 실험 결과 요약
+
+#### `one.cm` (`rtt_bitmap`)
+
+| 항목 | 값 |
+|---|---|
+| 성공 여부 | 성공 |
+| flow finished | 176.2 |
+| summary | New=490, Rtx=0, RTS=0, Bounced=0, ACKs=124, NACKs=0, Pulls=0 |
+
+#### `perm_16n_16c_2MB.cm` (`rtt_bitmap v0.1`)
+
+| 항목 | 값 |
+|---|---|
+| 성공 여부 | 성공 |
+| flow 수 | 16 |
+| earliest finish | 190.066 |
+| latest finish | 199.413 |
+| total packets | 7840 |
+| summary | New=7840, Rtx=0, RTS=0, Bounced=0, ACKs=2877, NACKs=0, Pulls=0 |
+
+#### `perm_16n_16c_2MB.cm` baseline `bitmap` 대비
+
+| 항목 | bitmap baseline | rtt_bitmap v0.1 | 변화 |
+|---|---:|---:|---:|
+| earliest finish | 187.015 | 190.066 | +3.051 (느림) |
+| latest finish | 198.55 | 199.413 | +0.863 (느림) |
+| Rtx | 0 | 0 | 동일 |
+| NACKs | 0 | 0 | 동일 |
+| ACKs | 2775 | 2877 | +102 |
+
+#### `perm_random_1024n_1024c_seed42_0u_16777216b.cm` 결과
+
+| 알고리즘 | New | Rtx | ACKs | NACKs | flow finished count |
+|---|---:|---:|---:|---:|---:|
+| bitmap | 2833635 | 205 | 1025592 | 205 | 0 |
+| rtt_bitmap v0 (참고) | 2823753 | 275 | 1035236 | 275 | 0 |
+| rtt_bitmap v0.1 | 2796479 | 584 | 1054893 | 584 | 0 |
+
+참고:
+- 해당 random1024 실행 로그에서는 `Flow ... finished at ...` 라인이 없어 earliest/latest 비교는 불가.
+- `flow finished count`가 0으로 관찰되어 `-end` 설정 또는 finished log 출력 조건 점검이 필요함.
+
+### 8-5. 결론 및 다음 후보
+
+- `rtt_bitmap v0.1`은 기능적으로 동작하며 작은 workload(`one.cm`, `perm16`)에서 실행 안정성은 확보됨.
+- `perm16`에서는 `Rtx/NACK` 안정성은 baseline과 동일하지만 `latest finish`가 baseline `bitmap`보다 여전히 느림.
+- random1024에서는 `Rtx/NACK/ACK`가 증가하여 현재 정책이 개선으로 이어지지 않음.
+- 따라서 현재 `rtt_bitmap`은 **experimental baseline**이며 최종 개선안은 아님.
+
+다음 튜닝 후보:
+1. RTT penalty를 `PATH_ECN`에서도 더 약하게 하거나 비활성화
+2. RTT를 penalty가 아니라 path ordering tie-breaker로 사용
+3. `RTT-Mixed` 구현/평가로 이동
