@@ -1601,12 +1601,10 @@ void UecSrc::processNack(const UecNackPacket& pkt) {
         recalculateRTO();
     }
 
-    // NACK path currently does not pass RTT sample to multipath logic. Use timeInf as
-    // an explicit "no RTT sample available" sentinel.
     if (pkt.last_hop())
-        _mp->processEv(ev, pkt.ecn_echo() ? UecMultipath::PATH_ECN : UecMultipath::PATH_GOOD, timeInf);
+        _mp->processEv(ev, pkt.ecn_echo() ? UecMultipath::PATH_ECN : UecMultipath::PATH_GOOD, raw_rtt);
     else
-        _mp->processEv(ev, UecMultipath::PATH_NACK, timeInf);
+        _mp->processEv(ev, UecMultipath::PATH_NACK, raw_rtt);
 
     sendIfPermitted();
 }
@@ -3171,4 +3169,3 @@ void UecPullPacer::requestPull(UecSink* sink) {
         _active = true;
     }
 }
-
