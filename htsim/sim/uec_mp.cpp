@@ -23,7 +23,8 @@ UecMpOblivious::UecMpOblivious(uint16_t no_of_paths,
             << endl;
 }
 
-void UecMpOblivious::processEv(uint16_t path_id, PathFeedback feedback) {
+void UecMpOblivious::processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt) {
+    (void)raw_rtt;
     return;
 }
 
@@ -72,7 +73,8 @@ UecMpBitmap::UecMpBitmap(uint16_t no_of_paths, bool debug)
             << endl;
 }
 
-void UecMpBitmap::processEv(uint16_t path_id, PathFeedback feedback) {
+void UecMpBitmap::processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt) {
+    (void)raw_rtt;
     // _no_of_paths must be a power of 2
     uint16_t mask = _no_of_paths - 1;
     path_id &= mask;  // only take the relevant bits for an index
@@ -149,7 +151,8 @@ UecMpReps::UecMpReps(uint16_t no_of_paths, bool debug, bool is_trimming_enabled)
             << endl;
 }
 
-void UecMpReps::processEv(uint16_t path_id, PathFeedback feedback) {
+void UecMpReps::processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt) {
+    (void)raw_rtt;
 
     if ((feedback == PATH_TIMEOUT) && !circular_buffer_reps->isFrozenMode() && circular_buffer_reps->explore_counter == 0) {
         if (_is_trimming_enabled) { // If we have trimming enabled
@@ -208,7 +211,8 @@ UecMpRepsLegacy::UecMpRepsLegacy(uint16_t no_of_paths, bool debug)
             << endl;
 }
 
-void UecMpRepsLegacy::processEv(uint16_t path_id, PathFeedback feedback) {
+void UecMpRepsLegacy::processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt) {
+    (void)raw_rtt;
     if (feedback == PATH_GOOD){
         _next_pathid.push_back(path_id);
         if (_debug){
@@ -273,9 +277,9 @@ void UecMpMixed::set_debug_tag(string debug_tag) {
     _reps_legacy.set_debug_tag(debug_tag);
 }
 
-void UecMpMixed::processEv(uint16_t path_id, PathFeedback feedback) {
-    _bitmap.processEv(path_id, feedback);
-    _reps_legacy.processEv(path_id, feedback);
+void UecMpMixed::processEv(uint16_t path_id, PathFeedback feedback, simtime_picosec raw_rtt) {
+    _bitmap.processEv(path_id, feedback, raw_rtt);
+    _reps_legacy.processEv(path_id, feedback, raw_rtt);
 }
 
 uint16_t UecMpMixed::nextEntropy(uint64_t seq_sent, uint64_t cur_cwnd_in_pkts) {

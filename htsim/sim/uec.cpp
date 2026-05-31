@@ -1035,7 +1035,7 @@ void UecSrc::processAck(const UecAckPacket& pkt) {
     //assert(_in_flight >= 0);
 
 
-    _mp->processEv(pkt.ev(), pkt.ecn_echo() ? UecMultipath::PATH_ECN : UecMultipath::PATH_GOOD);
+    _mp->processEv(pkt.ev(), pkt.ecn_echo() ? UecMultipath::PATH_ECN : UecMultipath::PATH_GOOD, raw_rtt);
 
     if(_flow.flow_id() == _debug_flowid ){
         cout <<  timeAsUs(eventlist().now()) << " flowid " << _flow.flow_id() << " track_avg_rtt " << timeAsUs(get_avg_delay())
@@ -1601,10 +1601,12 @@ void UecSrc::processNack(const UecNackPacket& pkt) {
         recalculateRTO();
     }
 
+    // NACK path currently does not pass RTT sample to multipath logic. Use timeInf as
+    // an explicit "no RTT sample available" sentinel.
     if (pkt.last_hop())
-        _mp->processEv(ev, pkt.ecn_echo() ? UecMultipath::PATH_ECN : UecMultipath::PATH_GOOD);
+        _mp->processEv(ev, pkt.ecn_echo() ? UecMultipath::PATH_ECN : UecMultipath::PATH_GOOD, timeInf);
     else
-        _mp->processEv(ev, UecMultipath::PATH_NACK);
+        _mp->processEv(ev, UecMultipath::PATH_NACK, timeInf);
 
     sendIfPermitted();
 }
@@ -2330,7 +2332,8 @@ void UecSrc::rtxTimerExpired() {
 
     // Trigger multipathing feedback for timeout. Unless we save EVs on the sender per packet, we will 
     // not be able to recover the original timed-out ev.
-    _mp->processEv(UecMultipath::UNKNOWN_EV, UecMultipath::PATH_TIMEOUT);
+    // TIMEOUT feedback has no ACK/NACK RTT sample context, so pass timeInf to denote unknown RTT.
+    _mp->processEv(UecMultipath::UNKNOWN_EV, UecMultipath::PATH_TIMEOUT, timeInf);
 
     // update flightsize?
 
@@ -3168,5 +3171,4 @@ void UecPullPacer::requestPull(UecSink* sink) {
         _active = true;
     }
 }
-
 
